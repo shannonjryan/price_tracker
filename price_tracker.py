@@ -231,7 +231,7 @@ def send_email_if_new_low(sheet, products):
 # --------------------------------------------------------------------------
 def main():
     # Load product definitions
-    with open("products.json", "r") as f:
+    with open("config/products.json", "r") as f:
         products_list = json.load(f)
 
     # Authenticate once
