@@ -1,6 +1,6 @@
-requests
 requests-html
 gspread
 oauth2client
 beautifulsoup4
 nest_asyncio
+lxml[html_clean]
