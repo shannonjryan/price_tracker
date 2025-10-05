@@ -104,25 +104,51 @@ async def _scrape_price_async(url):
         #         return float(re.sub(r"[^\d.]", "", tag.text))
         #     return None
 
-        # --- Shopify-based stores (House of Pianos / Carlingford / Piano World) ---
-        elif any(s in domain for s in ["houseofpianos.com.au", "carlingfordmusic.com.au", "australiapianoworld.com.au"]):
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
-            form = r.html.find("form.variations_form", first=True)
-            if form and form.attrs.get("data-product_variations"):
-                variations = json.loads(form.attrs["data-product_variations"])
-                # Try to find selected or first visible variation
-                for v in variations:
-                    if v.get("variation_is_visible") and v.get("price_html"):
-                        price_text = v["price_html"]
-                        price_number = re.search(r"[\d,.]+", price_text)
-                        if price_number:
-                            return float(price_number.group(0).replace(",", ""))
-            # Fallback: meta tag
-            tag = r.html.find("meta[property='product:price:amount']", first=True)
-            if tag and tag.attrs.get("content"):
-                return float(tag.attrs["content"])
-            return None    
+        # # --- Shopify-based stores (House of Pianos / Carlingford / Piano World) ---
+        # elif any(s in domain for s in ["houseofpianos.com.au", "carlingfordmusic.com.au", "australiapianoworld.com.au"]):
+        #     r = await asession.get(url)
+        #     await r.html.arender(timeout=20, sleep=2)
+        #     form = r.html.find("form.variations_form", first=True)
+        #     if form and form.attrs.get("data-product_variations"):
+        #         variations = json.loads(form.attrs["data-product_variations"])
+        #         # Try to find selected or first visible variation
+        #         for v in variations:
+        #             if v.get("variation_is_visible") and v.get("price_html"):
+        #                 price_text = v["price_html"]
+        #                 price_number = re.search(r"[\d,.]+", price_text)
+        #                 if price_number:
+        #                     return float(price_number.group(0).replace(",", ""))
+        #     # Fallback: meta tag
+        #     tag = r.html.find("meta[property='product:price:amount']", first=True)
+        #     if tag and tag.attrs.get("content"):
+        #         return float(tag.attrs["content"])
+        #     return None    
+
+        elif "carlingfordmusic.com.au" in domain:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            tag = soup.find("input", {"name": "gtm4wp_product_data"})
+            if tag and tag.get("value"):
+                try:
+                    data = json.loads(tag["value"].replace("&quot;", '"'))
+                    return float(data.get("price"))
+                except:
+                    return None
+            return None
+
+        elif "australiapianoworld.com.au" in domain:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            form = soup.find("form", class_="variations_form")
+            if form and form.has_attr("data-product_variations"):
+                try:
+                    variations = json.loads(form["data-product_variations"].replace("&quot;", '"'))
+                    for v in variations:
+                        if v.get("attributes", {}).get("attribute_pa_es120") == "white-kit":
+                            return float(v.get("display_price"))
+                except:
+                    return None
+            return None
 
         # --- Amazon Australia ---
         elif "amazon.com.au" in domain:
