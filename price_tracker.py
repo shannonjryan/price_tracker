@@ -105,7 +105,7 @@ def extract_price(text):
 
 # --------------------------------------------------------------------------
 def scrape_price(url):
-    """Attempt multiple strategies to extract product price, with domain-specific rules first."""
+    """Scrape product price with site-specific selectors and sale-price preference."""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36"}
         r = requests.get(url, headers=headers, timeout=20)
@@ -113,73 +113,86 @@ def scrape_price(url):
         soup = BeautifulSoup(r.text, "html.parser")
         domain = urlparse(url).netloc
 
-        # --- Domain-specific selectors ---
-        site_specific_extractors = {
-            "mannys.com.au": lambda s: s.select_one("div.price-wrap p.selling-price"),
-            "derringers.com.au": lambda s: s.select_one("p.selling-price"),
-            "angkormusic.com.au": lambda s: s.find("div", {"class": "productpromo", "itemprop": "price"}),
-        }
+        def get_price_from_el(el):
+            if not el: return None
+            text = el.get("content") or el.get_text(strip=True)
+            return extract_price(text)
 
-        for key, func in site_specific_extractors.items():
-            if key in domain:
-                el = func(soup)
-                if el:
-                    text = el.get("content") or el.get_text(strip=True)
-                    price = extract_price(text)
-                    if price and 500 < price < 10000:
-                        return price
-                break  # don’t fall through to generic if a site match is found
+        # --- Site-specific selectors ---
+        if "mannys.com.au" in domain:
+            el = soup.select_one("div.price-wrap p.selling-price")
+            price = get_price_from_el(el)
 
-        # --- Generic logic ---
-        # Common meta tags
-        for sel in [
-            "meta[property='product:price:amount']",
-            "meta[itemprop='price'][content]",
-            "div[itemprop='offers'] meta[itemprop='price']",
-        ]:
-            el = soup.select_one(sel)
-            if el:
-                text = el.get("content") or el.get_text(strip=True)
-                price = extract_price(text)
-                if price and 500 < price < 10000:
-                    return price
+        elif "derringers.com.au" in domain:
+            el = soup.select_one("p.selling-price")
+            price = get_price_from_el(el)
 
-        # JSON-LD structured data
-        for script in soup.find_all("script", type="application/ld+json"):
-            try:
-                data = json.loads(script.string)
-                if isinstance(data, list):
-                    data = data[0]
-                offers = data.get("offers", {})
-                if isinstance(offers, list):
-                    offers = offers[0]
-                price = offers.get("price") or data.get("price")
-                if price:
-                    price = float(price)
-                    if 500 < price < 10000:
-                        return price
-            except Exception:
-                continue
+        elif "angkormusic.com.au" in domain:
+            # There are both .productpromo (old) and .productpromo.sale (current)
+            sale = soup.select_one("div.productpromo.sale[itemprop='price']")
+            if sale:
+                price = get_price_from_el(sale)
+            else:
+                el = soup.select_one("div.productpromo[itemprop='price']")
+                price = get_price_from_el(el)
 
-        # Generic selector fallbacks
-        for sel in [".price", ".selling-price", ".product-price", "span.price", "span.amount"]:
-            el = soup.select_one(sel)
-            if el:
-                text = el.get("content") or el.get_text(strip=True)
-                price = extract_price(text)
-                if price and 500 < price < 10000:
-                    return price
+        elif "guitar.com.au" in domain:
+            # Prefer sale span over RRP
+            sale = soup.select_one("span.woocommerce-Price-amount.amount ins bdi")
+            if not sale:
+                sale = soup.select_one("ins .woocommerce-Price-amount")
+            if sale:
+                price = get_price_from_el(sale)
+            else:
+                el = soup.select_one(".woocommerce-Price-amount bdi")
+                price = get_price_from_el(el)
+
+        elif "musoscorner.com.au" in domain:
+            # Sometimes hidden in script tag; extract from "price":"###"
+            m = re.search(r'"price"\s*:\s*"(\d{1,4}(?:\.\d{2})?)"', r.text)
+            price = float(m.group(1)) if m else None
+
+        elif "megamusiconline.com.au" in domain:
+            # Usually inside div.product-price > span.woocommerce-Price-amount
+            sale = soup.select_one("p.price ins .woocommerce-Price-amount bdi")
+            if sale:
+                price = get_price_from_el(sale)
+            else:
+                el = soup.select_one("p.price .woocommerce-Price-amount bdi")
+                price = get_price_from_el(el)
+
+        else:
+            price = None
+
+        # --- Generic fallback if none of the above worked ---
+        if not price:
+            for sel in [
+                "meta[property='product:price:amount']",
+                "meta[itemprop='price'][content]",
+                "div[itemprop='offers'] meta[itemprop='price']",
+                ".price ins",
+                ".price .amount",
+                ".selling-price",
+                ".product-price",
+            ]:
+                el = soup.select_one(sel)
+                price = get_price_from_el(el)
+                if price and 100 < price < 10000:
+                    break
 
         # Regex fallback
-        match = re.search(r"\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", soup.get_text())
-        if match:
-            price = float(match.group(1).replace(",", ""))
-            if 500 < price < 10000:
-                return price
+        if not price:
+            m = re.search(r"\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", soup.get_text())
+            if m:
+                price = float(m.group(1).replace(",", ""))
+
+        if price and 100 < price < 10000:
+            return price
 
     except Exception as e:
         print(f"Error scraping {url}: {e}")
     return None
+
 
 
 # --------------------------------------------------------------------------
