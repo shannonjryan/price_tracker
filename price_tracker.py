@@ -85,32 +85,56 @@ async def _scrape_price_async(url):
                     return float(text)
             return None
 
-        # # Guitar World
-        # elif "guitarworld.com.au" in domain:
+        # elif "carlingfordmusic.com.au" in domain:
+        #     r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        #     soup = BeautifulSoup(r.text, "html.parser")
+        #     # Look for screen-reader text fallback
+        #     tag = soup.find("span", class_="screen-reader-text")
+        #     if tag:
+        #         m = re.search(r"\$(\d[\d,.]*)", tag.text)
+        #         if m:
+        #             return float(m.group(1).replace(",", ""))
+        #     return None
+
+        # elif "australiapianoworld.com.au" in domain or "houseofpianos.com.au" in domain:
         #     r = await asession.get(url)
         #     await r.html.arender(timeout=20, sleep=2)
-
-        #     # First try meta itemprop
-        #     tag = r.html.find("meta[itemprop='price']", first=True)
-        #     if tag and tag.attrs.get("content"):
-        #         return float(tag.attrs["content"])
-
-        #     # Next try meta property
-        #     tag = r.html.find("meta[property='product:price:amount']", first=True)
-        #     if tag and tag.attrs.get("content"):
-        #         return float(tag.attrs["content"])
-
-        #     # Last resort: JS variable BCData
-        #     import re, json
-        #     m = re.search(r"var BCData\s*=\s*(\{.*?\});", r.html.html, re.DOTALL)
-        #     if m:
-        #         try:
-        #             data = json.loads(m.group(1))
-        #             return float(data["product_attributes"]["price"]["with_tax"]["value"])
-        #         except Exception:
-        #             pass
-
+        #     tag = r.html.find(".woocommerce-variation-price .woocommerce-Price-amount", first=True)
+        #     if tag:
+        #         return float(re.sub(r"[^\d.]", "", tag.text))
         #     return None
+
+        elif "houseofpianos.com.au" in domain or "australiapianoworld.com.au" in domain or "carlingfordmusic.com.au" in domain:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            # Look for the script with data-events containing productVariant
+            script_tag = soup.find("script", attrs={"data-events": True})
+            if script_tag:
+                try:
+                    data_events = json.loads(script_tag["data-events"].replace("&quot;", '"'))
+                    for event in data_events:
+                        if isinstance(event, list) and event[0] == "product_viewed":
+                            price = event[1]["productVariant"]["price"]["amount"]
+                            return float(price)
+                except Exception:
+                    pass
+            return None        
+
+        elif "amazon.com.au" in domain:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            
+            # Try first input by name
+            tag = soup.find("input", {"name": "items[0.base][customerVisiblePrice][amount]"})
+            if tag and tag.get("value"):
+                return float(tag["value"])
+            
+            # Try second input by id
+            tag = soup.find("input", {"id": "twister-plus-price-data-price"})
+            if tag and tag.get("value"):
+                return float(tag["value"])
+            
+            return None
 
         # --- Generic --- 
         else: 
