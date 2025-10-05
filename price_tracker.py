@@ -23,9 +23,9 @@ async def _scrape_price_async(url):
         if "mannys.com.au" in domain:
             r = await asession.get(url)
             await r.html.arender(timeout=20, sleep=2)
-            tag = r.html.find("div.price p.selling-price", first=True)
-            if tag:
-                return float(re.sub(r"[^\d.]", "", tag.text))
+            tag = r.html.find("div.product-meta-container div.price-wrap p.selling-price", first=True)
+            if tag: 
+                return float(re.sub(r"[^\d.]", "", tag.text)) 
             return None
 
         # --- Derringers ---
@@ -33,7 +33,7 @@ async def _scrape_price_async(url):
             r = await asession.get(url)
             await r.html.arender(timeout=20, sleep=2)
             tag = r.html.find("p.selling-price", first=True)
-            if tag:
+            if tag: 
                 return float(re.sub(r"[^\d.]", "", tag.text))
             return None
 
@@ -85,32 +85,58 @@ async def _scrape_price_async(url):
                     return float(text)
             return None
 
-        # Guitar World
-        elif "guitarworld.com.au" in domain:
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
+        # # Guitar World
+        # elif "guitarworld.com.au" in domain:
+        #     r = await asession.get(url)
+        #     await r.html.arender(timeout=20, sleep=2)
 
-            # First try meta itemprop
-            tag = r.html.find("meta[itemprop='price']", first=True)
-            if tag and tag.attrs.get("content"):
-                return float(tag.attrs["content"])
+        #     # First try meta itemprop
+        #     tag = r.html.find("meta[itemprop='price']", first=True)
+        #     if tag and tag.attrs.get("content"):
+        #         return float(tag.attrs["content"])
 
-            # Next try meta property
-            tag = r.html.find("meta[property='product:price:amount']", first=True)
-            if tag and tag.attrs.get("content"):
-                return float(tag.attrs["content"])
+        #     # Next try meta property
+        #     tag = r.html.find("meta[property='product:price:amount']", first=True)
+        #     if tag and tag.attrs.get("content"):
+        #         return float(tag.attrs["content"])
 
-            # Last resort: JS variable BCData
-            import re, json
-            m = re.search(r"var BCData\s*=\s*(\{.*?\});", r.html.html, re.DOTALL)
-            if m:
-                try:
-                    data = json.loads(m.group(1))
-                    return float(data["product_attributes"]["price"]["with_tax"]["value"])
-                except Exception:
-                    pass
+        #     # Last resort: JS variable BCData
+        #     import re, json
+        #     m = re.search(r"var BCData\s*=\s*(\{.*?\});", r.html.html, re.DOTALL)
+        #     if m:
+        #         try:
+        #             data = json.loads(m.group(1))
+        #             return float(data["product_attributes"]["price"]["with_tax"]["value"])
+        #         except Exception:
+        #             pass
 
-            return None
+        #     return None
+
+        # --- Generic --- 
+        else: 
+            r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}) 
+            soup = BeautifulSoup(r.text, "html.parser") 
+            # Meta tags 
+            tag = soup.find("meta", {"property": "product:price:amount"}) 
+            if tag and tag.get("content"): return float(tag["content"]) 
+            tag = soup.find("meta", {"itemprop": "price"}) 
+            if tag and tag.get("content"): return float(tag["content"]) 
+            # JSON-LD 
+            for script in soup.find_all("script", type="application/ld+json"): 
+                try: 
+                    data = json.loads(script.string) 
+                    if isinstance(data, list): 
+                        for item in data: 
+                            if "offers" in item and "price" in item["offers"]: 
+                                return float(item["offers"]["price"]) 
+                    elif isinstance(data, dict): 
+                        if "offers" in data and "price" in data["offers"]: 
+                            return float(data["offers"]["price"]) 
+                except Exception: 
+                    continue 
+            # Last-resort 
+            tag = soup.select_one(".price, .selling-price") 
+            if tag: return float(re.sub(r"[^\d.]", "", tag.get_text(strip=True))) 
 
     except Exception as e:
         print("⚠️ Error scraping", url, ":", e)
