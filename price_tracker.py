@@ -105,73 +105,80 @@ def extract_price(text):
 
 # --------------------------------------------------------------------------
 def scrape_price(url):
-    """
-    Attempts multiple scraping strategies to extract a product price from a webpage.
-    Order of attempts:
-      1. Common selectors
-      2. Meta tags
-      3. JSON-LD structured data
-      4. Regex fallback
-    """
+    """Attempt multiple strategies to extract product price, with domain-specific rules first."""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36"}
         r = requests.get(url, headers=headers, timeout=20)
         r.raise_for_status()
-        html = r.text
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(r.text, "html.parser")
+        domain = urlparse(url).netloc
 
-        # 1️⃣ Common visible selectors
-        common_selectors = [
-            '[itemprop="price"]',
-            'meta[itemprop="price"][content]',
-            'span[data-testid*="price"]',
-            'span[class*="Price"]',
-            'div[class*="price"]',
-            'span[class*="amount"]',
-            'span.price',
-            '.selling-price',
-            '.product-price',
-        ]
-        for sel in common_selectors:
+        # --- Domain-specific selectors ---
+        site_specific_extractors = {
+            "mannys.com.au": lambda s: s.select_one("div.price-wrap p.selling-price"),
+            "derringers.com.au": lambda s: s.select_one("p.selling-price"),
+            "angkormusic.com.au": lambda s: s.find("div", {"class": "productpromo", "itemprop": "price"}),
+        }
+
+        for key, func in site_specific_extractors.items():
+            if key in domain:
+                el = func(soup)
+                if el:
+                    text = el.get("content") or el.get_text(strip=True)
+                    price = extract_price(text)
+                    if price and 500 < price < 10000:
+                        return price
+                break  # don’t fall through to generic if a site match is found
+
+        # --- Generic logic ---
+        # Common meta tags
+        for sel in [
+            "meta[property='product:price:amount']",
+            "meta[itemprop='price'][content]",
+            "div[itemprop='offers'] meta[itemprop='price']",
+        ]:
             el = soup.select_one(sel)
             if el:
                 text = el.get("content") or el.get_text(strip=True)
                 price = extract_price(text)
-                if price:
+                if price and 500 < price < 10000:
                     return price
 
-        # 2️⃣ Meta tags that look like price data
-        for meta in soup.find_all("meta"):
-            content = meta.get("content", "")
-            price = extract_price(content)
-            if price:
-                return price
-
-        # 3️⃣ JSON-LD structured data
+        # JSON-LD structured data
         for script in soup.find_all("script", type="application/ld+json"):
             try:
                 data = json.loads(script.string)
                 if isinstance(data, list):
                     data = data[0]
-
                 offers = data.get("offers", {})
                 if isinstance(offers, list):
                     offers = offers[0]
-
                 price = offers.get("price") or data.get("price")
                 if price:
-                    return float(price)
+                    price = float(price)
+                    if 500 < price < 10000:
+                        return price
             except Exception:
                 continue
 
-        # 4️⃣ Regex fallback – grab first $number pattern
-        matches = re.findall(r"\$?\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", html)
-        if matches:
-            return float(matches[0].replace(",", ""))
+        # Generic selector fallbacks
+        for sel in [".price", ".selling-price", ".product-price", "span.price", "span.amount"]:
+            el = soup.select_one(sel)
+            if el:
+                text = el.get("content") or el.get_text(strip=True)
+                price = extract_price(text)
+                if price and 500 < price < 10000:
+                    return price
+
+        # Regex fallback
+        match = re.search(r"\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", soup.get_text())
+        if match:
+            price = float(match.group(1).replace(",", ""))
+            if 500 < price < 10000:
+                return price
 
     except Exception as e:
         print(f"Error scraping {url}: {e}")
-
     return None
 
 
