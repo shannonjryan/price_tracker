@@ -104,36 +104,38 @@ async def _scrape_price_async(url):
         #         return float(re.sub(r"[^\d.]", "", tag.text))
         #     return None
 
-        elif "houseofpianos.com.au" in domain or "australiapianoworld.com.au" in domain or "carlingfordmusic.com.au" in domain:
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            soup = BeautifulSoup(r.text, "html.parser")
-            # Look for the script with data-events containing productVariant
-            script_tag = soup.find("script", attrs={"data-events": True})
-            if script_tag:
-                try:
-                    data_events = json.loads(script_tag["data-events"].replace("&quot;", '"'))
-                    for event in data_events:
-                        if isinstance(event, list) and event[0] == "product_viewed":
-                            price = event[1]["productVariant"]["price"]["amount"]
-                            return float(price)
-                except Exception:
-                    pass
-            return None        
+        # --- Shopify-based stores (House of Pianos / Carlingford / Piano World) ---
+        elif any(s in domain for s in ["houseofpianos.com.au", "carlingfordmusic.com.au", "australiapianoworld.com.au"]):
+            r = await asession.get(url)
+            await r.html.arender(timeout=20, sleep=2)
+            form = r.html.find("form.variations_form", first=True)
+            if form and form.attrs.get("data-product_variations"):
+                variations = json.loads(form.attrs["data-product_variations"])
+                # Try to find selected or first visible variation
+                for v in variations:
+                    if v.get("variation_is_visible") and v.get("price_html"):
+                        price_text = v["price_html"]
+                        price_number = re.search(r"[\d,.]+", price_text)
+                        if price_number:
+                            return float(price_number.group(0).replace(",", ""))
+            # Fallback: meta tag
+            tag = r.html.find("meta[property='product:price:amount']", first=True)
+            if tag and tag.attrs.get("content"):
+                return float(tag.attrs["content"])
+            return None    
 
+        # --- Amazon Australia ---
         elif "amazon.com.au" in domain:
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            soup = BeautifulSoup(r.text, "html.parser")
-            
-            # Try first input by name
-            tag = soup.find("input", {"name": "items[0.base][customerVisiblePrice][amount]"})
-            if tag and tag.get("value"):
-                return float(tag["value"])
-            
-            # Try second input by id
-            tag = soup.find("input", {"id": "twister-plus-price-data-price"})
-            if tag and tag.get("value"):
-                return float(tag["value"])
-            
+            r = await asession.get(url)
+            await r.html.arender(timeout=20, sleep=2)
+            # Hidden input with price
+            tag = r.html.find("input#twister-plus-price-data-price", first=True)
+            if tag and tag.attrs.get("value"):
+                return float(tag.attrs["value"])
+            # Alternate hidden input
+            tag2 = r.html.find("input[name*='customerVisiblePrice']", first=True)
+            if tag2 and tag2.attrs.get("value"):
+                return float(tag2.attrs["value"])
             return None
 
         # --- Generic --- 
