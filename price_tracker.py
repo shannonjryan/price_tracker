@@ -23,7 +23,7 @@ async def _scrape_price_async(url):
         if "mannys.com.au" in domain:
             r = await asession.get(url)
             await r.html.arender(timeout=20, sleep=2)
-            tag = r.html.find("div.product-meta-container div.price-wrap p.selling-price", first=True)
+            tag = r.html.find("div.price p.selling-price", first=True)
             if tag:
                 return float(re.sub(r"[^\d.]", "", tag.text))
             return None
@@ -83,6 +83,33 @@ async def _scrape_price_async(url):
                 text = tag.element.tail.strip().replace(",", "")
                 if text:
                     return float(text)
+            return None
+
+        # Guitar World
+        elif "guitarworld.com.au" in domain:
+            r = await asession.get(url)
+            await r.html.arender(timeout=20, sleep=2)
+
+            # First try meta itemprop
+            tag = r.html.find("meta[itemprop='price']", first=True)
+            if tag and tag.attrs.get("content"):
+                return float(tag.attrs["content"])
+
+            # Next try meta property
+            tag = r.html.find("meta[property='product:price:amount']", first=True)
+            if tag and tag.attrs.get("content"):
+                return float(tag.attrs["content"])
+
+            # Last resort: JS variable BCData
+            import re, json
+            m = re.search(r"var BCData\s*=\s*(\{.*?\});", r.html.html, re.DOTALL)
+            if m:
+                try:
+                    data = json.loads(m.group(1))
+                    return float(data["product_attributes"]["price"]["with_tax"]["value"])
+                except Exception:
+                    pass
+
             return None
 
     except Exception as e:
