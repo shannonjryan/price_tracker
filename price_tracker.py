@@ -25,13 +25,7 @@ async def _scrape_price_async(url):
             await r.html.arender(timeout=20, sleep=2)
             tag = r.html.find("div.product-meta-container div.price-wrap p.selling-price", first=True)
             if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.text)
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
+                return float(re.sub(r"[^\d.]", "", tag.text))
             return None
 
         # --- Derringers ---
@@ -40,13 +34,7 @@ async def _scrape_price_async(url):
             await r.html.arender(timeout=20, sleep=2)
             tag = r.html.find("p.selling-price", first=True)
             if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.text)
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
+                return float(re.sub(r"[^\d.]", "", tag.text))
             return None
 
         # --- Angkor Music ---
@@ -58,132 +46,61 @@ async def _scrape_price_async(url):
                 return float(tag.attrs["content"])
             return None
 
-        # --- Mega Music ---
-        elif "megamusic.com.au" in domain or "megamusiconline.com.au" in domain:
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
-            tag = r.html.find(".product-info-price .price", first=True)
-            if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.text)
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
-            return None
-
         # --- Musos Corner ---
         elif "musoscorner.com.au" in domain:
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
-            tag = r.html.find(".price .amount", first=True)
-            if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.text)
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
-            return None
-
-        # --- Guitar World ---
-        elif "guitarworld.com.au" in domain:
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
-            tag = r.html.find(".price-new, .woocommerce-Price-amount", first=True)
-            if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.text)
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
-            return None
-
-        # --- World of Music ---
-        elif "worldofmusic.com.au" in domain:
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
-            tag = r.html.find("span.price .amount", first=True)
-            if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.text)
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            tag = soup.find("meta", {"property": "product:price:amount"})
+            if tag and tag.get("content"):
+                return float(tag["content"])
             return None
 
         # --- Better Music ---
         elif "bettermusic.com.au" in domain:
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
-            tag = r.html.find("div.price span.woocommerce-Price-amount", first=True)
-            if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.text)
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
-            return None
-
-        # --- Generic Fallback ---
-        else:
             r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
             soup = BeautifulSoup(r.text, "html.parser")
-
-            # Meta tags
             tag = soup.find("meta", {"property": "product:price:amount"})
             if tag and tag.get("content"):
                 return float(tag["content"])
-            tag = soup.find("meta", {"itemprop": "price"})
+            return None
+
+        # --- World of Music ---
+        elif "worldofmusic.com.au" in domain:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            tag = soup.find("meta", {"property": "product:price:amount"})
             if tag and tag.get("content"):
                 return float(tag["content"])
+            return None
 
-            # JSON-LD structured data
-            for script in soup.find_all("script", type="application/ld+json"):
-                try:
-                    data = json.loads(script.string)
-                    if isinstance(data, list):
-                        for item in data:
-                            if "offers" in item and "price" in item["offers"]:
-                                return float(item["offers"]["price"])
-                    elif isinstance(data, dict):
-                        if "offers" in data and "price" in data["offers"]:
-                            return float(data["offers"]["price"])
-                except Exception:
-                    continue
-
-            # Last-resort selectors
-            tag = soup.select_one(".price, .selling-price, .product-price")
-            if tag:
-                price_text = re.sub(r"[^\d.]", "", tag.get_text(strip=True))
-                if not price_text:
-                    return None
-                price = float(price_text)
-                if price < 50:
-                    price *= 1000
-                return price
+        # --- Mega Music ---
+        elif "megamusic.com.au" in domain or "megamusiconline.com.au" in domain:
+            r = await asession.get(url)
+            await r.html.arender(timeout=20, sleep=2)
+            # Grab the number following the currency symbol
+            tag = r.html.find(".woocommerce-Price-currencySymbol", first=True)
+            if tag and tag.element.tail:
+                text = tag.element.tail.strip().replace(",", "")
+                if text:
+                    return float(text)
+            return None
 
     except Exception as e:
         print("⚠️ Error scraping", url, ":", e)
     return None
 
 
+
 # --------------------------------------------------------------------------
 def scrape_price(url):
     """Synchronous wrapper for async scraper."""
     try:
+        # Run the async scraper
         result = asession.run(lambda: _scrape_price_async(url))[0]
-        return result if result else "N/A"
+        # Return "N/A" if None
+        return result if result is not None else "N/A"
     except Exception as e:
-        print(f"⚠️ scrape_price failed for {url}: {e}")
+        print("⚠️ Error in scrape_price for", url, ":", e)
         return "N/A"
 
 
