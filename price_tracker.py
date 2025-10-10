@@ -85,45 +85,7 @@ async def _scrape_price_async(url):
                     return float(text)
             return None
 
-        # elif "carlingfordmusic.com.au" in domain:
-        #     r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-        #     soup = BeautifulSoup(r.text, "html.parser")
-        #     # Look for screen-reader text fallback
-        #     tag = soup.find("span", class_="screen-reader-text")
-        #     if tag:
-        #         m = re.search(r"\$(\d[\d,.]*)", tag.text)
-        #         if m:
-        #             return float(m.group(1).replace(",", ""))
-        #     return None
-
-        # elif "australiapianoworld.com.au" in domain or "houseofpianos.com.au" in domain:
-        #     r = await asession.get(url)
-        #     await r.html.arender(timeout=20, sleep=2)
-        #     tag = r.html.find(".woocommerce-variation-price .woocommerce-Price-amount", first=True)
-        #     if tag:
-        #         return float(re.sub(r"[^\d.]", "", tag.text))
-        #     return None
-
-        # # --- Shopify-based stores (House of Pianos / Carlingford / Piano World) ---
-        # elif any(s in domain for s in ["houseofpianos.com.au", "carlingfordmusic.com.au", "australiapianoworld.com.au"]):
-        #     r = await asession.get(url)
-        #     await r.html.arender(timeout=20, sleep=2)
-        #     form = r.html.find("form.variations_form", first=True)
-        #     if form and form.attrs.get("data-product_variations"):
-        #         variations = json.loads(form.attrs["data-product_variations"])
-        #         # Try to find selected or first visible variation
-        #         for v in variations:
-        #             if v.get("variation_is_visible") and v.get("price_html"):
-        #                 price_text = v["price_html"]
-        #                 price_number = re.search(r"[\d,.]+", price_text)
-        #                 if price_number:
-        #                     return float(price_number.group(0).replace(",", ""))
-        #     # Fallback: meta tag
-        #     tag = r.html.find("meta[property='product:price:amount']", first=True)
-        #     if tag and tag.attrs.get("content"):
-        #         return float(tag.attrs["content"])
-        #     return None    
-
+        # --- Carlingford Music ---
         elif "carlingfordmusic.com.au" in domain:
             r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
             soup = BeautifulSoup(r.text, "html.parser")
@@ -136,32 +98,69 @@ async def _scrape_price_async(url):
                     return None
             return None
 
+        # --- Australian Piano World ---
         elif "australiapianoworld.com.au" in domain:
             r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
             soup = BeautifulSoup(r.text, "html.parser")
-            form = soup.find("form", class_="variations_form")
-            if form and form.has_attr("data-product_variations"):
-                try:
-                    variations = json.loads(form["data-product_variations"].replace("&quot;", '"'))
-                    for v in variations:
-                        if v.get("attributes", {}).get("attribute_pa_es120") == "white-kit":
-                            return float(v.get("display_price"))
-                except:
-                    return None
+
+            # Meta tag first
+            tag = soup.find("meta", {"property": "product:price:amount"})
+            if tag and tag.get("content"):
+                return float(tag["content"])
+
+            # Visible WooCommerce price span
+            tag = soup.select_one(".woocommerce-Price-amount bdi")
+            if tag:
+                return float(re.sub(r"[^\d.]", "", tag.get_text(strip=True)))
+
             return None
 
         # --- Amazon Australia ---
         elif "amazon.com.au" in domain:
-            r = await asession.get(url)
-            await r.html.arender(timeout=20, sleep=2)
-            # Hidden input with price
-            tag = r.html.find("input#twister-plus-price-data-price", first=True)
-            if tag and tag.attrs.get("value"):
-                return float(tag.attrs["value"])
-            # Alternate hidden input
-            tag2 = r.html.find("input[name*='customerVisiblePrice']", first=True)
-            if tag2 and tag2.attrs.get("value"):
-                return float(tag2.attrs["value"])
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+
+            # Try meta itemprop
+            tag = soup.find("meta", {"itemprop": "price"})
+            if tag and tag.get("content"):
+                return float(tag["content"])
+
+            # Try visible price spans
+            whole = soup.find("span", class_="a-price-whole")
+            frac = soup.find("span", class_="a-price-fraction")
+            if whole:
+                price_text = whole.text.replace(",", "")
+                if frac:
+                    price_text += "." + frac.text
+                try:
+                    return float(price_text)
+                except:
+                    pass
+
+            return None
+
+        # --- Scarlett Music ---
+        elif "scarlettmusic.com.au" in domain:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            tag = soup.find("meta", {"property": "og:price:amount"})
+            if tag and tag.get("content"):
+                return float(tag["content"])
+            tag = soup.select_one(".money")
+            if tag:
+                return float(re.sub(r"[^\d.]", "", tag.text))
+            return None
+
+        # --- House of Pianos ---
+        elif "houseofpianos.com.au" in domain:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(r.text, "html.parser")
+            tag = soup.find("meta", {"property": "og:price:amount"})
+            if tag and tag.get("content"):
+                return float(tag["content"])
+            tag = soup.select_one(".price-item--regular")
+            if tag:
+                return float(re.sub(r"[^\d.]", "", tag.text))
             return None
 
         # --- Generic --- 
