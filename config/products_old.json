@@ -1,0 +1,16 @@
+[
+    {
+        "name": "Roland TD-17KV2",
+        "sheet_name": "TD-17KV2",
+        "retailers": [
+            {"name": "Mannys", "url": "https://www.mannys.com.au/products/roland-td-17kv-2-v-drums-drum-kit"},
+            {"name": "Musos Corner", "url": "https://www.musoscorner.com.au/roland-td-17kv2-v-drums-electric-drum-kit"},
+            {"name": "Angkor Music", "url": "https://www.angkormusic.com.au/roland-td-17kv2s-v-drums-series-2-electronic-drum"},
+            {"name": "Guitar World", "url": "https://guitar.com.au/roland-td17kv2s-v-drums-electronic-drumkit"},
+            {"name": "Better Music", "url": "https://www.bettermusic.com.au/roland-td-17kv2s-v-drums-electronic-drum-kit"},
+            {"name": "Mega Music", "url": "https://www.megamusiconline.com.au/product/roland-td-17kv2-v-drums-electronic-drum-kit-td17kv2"},
+            {"name": "World of Music", "url": "https://www.worldofmusic.com.au/drums/electronic-drum-kits/roland-td-17kv2-v-drums-electronic-drum-kit"},
+            {"name": "Derringers Music", "url": "https://www.derringers.com.au/products/roland-td-17kv2-v-drums-series-2-electric-drum-kit"}
+        ]
+    },
+]
